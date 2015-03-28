@@ -161,6 +161,11 @@ module Is24
       response.body["expose.expose"]
     end
 
+    def perform_query(query)
+      response = connection.get(query)
+      response.body
+    end
+
     def list_exposes
       response = connection(:offer).get("user/me/realestate?publishchannel=IS24")
       response.body
