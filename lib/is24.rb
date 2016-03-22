@@ -93,7 +93,8 @@ module Is24
 
     def request_token( callback_uri )
       # TODO error handling
-      response = connection(:authorization, callback_uri).get("oauth/request_token")
+      #response = connection(:authorization, callback_uri).get("oauth/request_token")
+      response = connection(:authorization, callback_uri).get("oauth/request_token&oauth_callback")
 
       body = response.body.split('&')
       response = {
