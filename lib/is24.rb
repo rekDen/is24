@@ -81,7 +81,7 @@ module Is24
     end
 
     def initialize( options = {} )
-      logger "Initialized b'nerd IS24 with options #{options}"
+      logger "Initialized b'nerd IS24 with options #{options}  jl ljk lj l üopihjiop jüiop jüoijlmk"
 
       @token = options[:token] || nil
       @secret = options[:secret] || nil
@@ -93,24 +93,48 @@ module Is24
 
     def request_token( callback_uri )
       # TODO error handling
-      #response = connection(:authorization, callback_uri).get("oauth/request_token")
-      response = connection(:authorization, callback_uri).get("oauth/request_token&oauth_callback")
+      response = connection(:authorization, callback_uri).get("oauth/request_token")
 
       body = response.body.split('&')
+      puts "body"
+      puts body.inspect
+
+      @token = CGI::unescape(body[0].split("=")[1])
+      @secret = CGI::unescape(body[1].split("=")[1])
+
       response = {
-        :oauth_token => CGI::unescape(body[0].split("=")[1]),
-        :oauth_token_secret => CGI::unescape(body[1].split("=")[1]),
-        :redirect_uri => "https://rest.immobilienscout24.de/restapi/security/oauth/confirm_access?#{body[0]}"
+        :oauth_token => @token,
+        :oauth_token_secret => @secret,
+        :redirect_uri => "https://rest.immobilienscout24.de/restapi/security/oauth/confirm_access?#{body[0]}",
       }
+      response
+    end
+
+    def confirm_access( oauth_token )
+      response = connection(:authorization).get("oauth/confirm_access?oauth_token=" + oauth_token.to_s)
+      puts "Response"
+      puts response.inspect
+
+      body = response.body.split('&')
+      puts "body inspect"
+      puts body.inspect
     end
 
     def request_access_token( params = {} )
       # TODO error handling
       @oauth_verifier = params[:oauth_verifier]
       @token = params[:oauth_token]
-      @secret = params[:oauth_token_secret]
+      @secret = params[:oauth_token_secret]      
+
+      puts "Secret"
+      puts @secret      
+
+      #@token = params[:oauth_token]
+      
 
       response = connection(:authorization).get("oauth/access_token")
+      puts "apklsdfj uiosdfopajusdf oapuisdfj oaisjudf "
+      puts response.inspect
       body = response.body.split('&')
 
       response = {
@@ -162,9 +186,30 @@ module Is24
       response.body["expose.expose"]
     end
 
-    def perform_query(query)
-      response = connection.get(query)
+    def perform_query(params = {}, query)
+      @token = params[:oauth_token]
+      @secret = params[:oauth_token_secret]   
+      response = connection(:offer).get(query)
       response.body
+    end
+
+    def post_expose( params = {}, query, xml_url )
+      xml = Faraday::UploadIO.new(xml_url, "application/xml", "123.xml")
+      puts xml.inspect
+      @token = params[:oauth_token]
+      @secret = params[:oauth_token_secret]   
+      #puts "File size"
+      #puts File.size(xml)
+      response = connection(:offer).post query, xml do |req|
+        req.headers['Content-Type'] = 'application/xml; charset=utf-8'
+        req.headers['Content-Length'] = File.size(xml).to_s
+        req.headers['Content-Language'] = "en-US"
+        req.headers['Content-Encoding'] = 'UTF-8'
+        #req.headers['Accept'] = "*/*"
+      end
+      puts "oioioi"
+      puts response
+      response.body      
     end
 
     def list_exposes
@@ -176,6 +221,26 @@ module Is24
       response = connection.get("searcher/me/shortlist/0/entry")
       response.body["shortlist.shortlistEntries"].first["shortlistEntry"]
     end
+
+    def publish_expose (params = {}, json)
+      @token = params[:oauth_token]
+      @secret = params[:oauth_token_secret] 
+
+      query = "publish"
+
+      puts json.inspect
+
+      response = connection(:offer).post query, json do |req|
+        req.headers['Content-Type'] = 'application/json'
+        req.headers['Content-Length'] = json.length.to_s
+        req.headers['Content-Language'] = "en-US"
+        req.headers['Content-Encoding'] = 'UTF-8'             
+      end
+
+      puts response.inspect
+
+    end
+
 
     protected
 
@@ -221,7 +286,52 @@ module Is24
             builder.response :mashify
             builder.response :json unless connection_type =~ /authorization/i
             builder.adapter Faraday.default_adapter
-          end
+      end
+    end
+
+    def connection_post(connection_type = :default, callback_uri = nil)
+
+      # set request defaults
+      defaults = {
+        :url => API_ENDPOINT,
+        :headers => {
+          :accept =>  'application/json',
+          :user_agent => 'b\'nerd .media IS24 Ruby Client'}
+      }
+
+      defaults.merge!( {
+        :url => API_AUTHORIZATION_ENDPOINT
+      } ) if connection_type =~ /authorization/i
+
+      defaults.merge!( {
+        :url => API_OFFER_ENDPOINT
+      } ) if connection_type =~ /offer/i
+
+
+      # define oauth credentials
+      oauth = {
+        :consumer_key => @consumer_key,
+        :consumer_secret => @consumer_secret,
+        :token => @token,
+        :token_secret => @secret
+      }
+
+      # merge callback_uri if present
+      oauth.merge!( {
+        :callback => callback_uri
+      } ) if connection_type =~ /authorization/i && callback_uri
+
+      # merge verifier if present
+      oauth.merge!( {
+        :verifier => @oauth_verifier
+      } ) if connection_type =~ /authorization/i && @oauth_verifier
+
+      Faraday::Connection.new( defaults ) do |builder|
+            builder.request :oauth, oauth
+            builder.response :mashify
+            builder.response :json unless connection_type =~ /authorization/i
+            builder.adapter Faraday.default_adapter
+      end
     end
 
   end
